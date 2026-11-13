@@ -3,6 +3,11 @@ import json, os, sys, zipfile, hashlib
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 meta = json.load(open(os.path.join(root, 'komari-theme.json'), encoding='utf-8'))
+for field in ('name', 'short', 'version', 'author'):
+    if not isinstance(meta.get(field), str) or not meta[field].strip():
+        sys.exit(f'komari-theme.json {field} must be a non-empty string for theme market submission')
+if meta.get('description') is not None and not isinstance(meta['description'], str):
+    sys.exit('komari-theme.json description must be a string for theme market submission')
 dist = os.path.join(root, 'dist')
 if not os.path.isfile(os.path.join(dist, 'index.html')):
     sys.exit('dist/index.html missing - run npm run build first')
