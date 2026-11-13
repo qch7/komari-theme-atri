@@ -5,7 +5,10 @@ import Icon from './Icon.vue'
 export interface Series {
   name: string
   color: string
-  values: number[]
+  values: (number | null)[]
+  axis?: 'right'
+  minStep?: number
+  fmt?: (value: number) => string
 }
 
 const props = withDefaults(
@@ -18,13 +21,22 @@ const props = withDefaults(
     fmt?: (v: number) => string
     loading?: boolean
     error?: string
+    emptyText?: string
   }>(),
-  { icon: undefined, max: undefined, fmt: (v: number) => v.toFixed(1), loading: false, error: '' },
+  {
+    icon: undefined,
+    max: undefined,
+    fmt: (v: number) => v.toFixed(1),
+    loading: false,
+    error: '',
+    emptyText: '这个时间段还没有记录哦……',
+  },
 )
 
 const W = 600
 const H = 160
 const MAXPTS = 240
+const TICK_INTERVALS = 4
 const hoverIdx = ref<number | null>(null)
 const box = ref<HTMLDivElement>()
 const gradientId = useId()
@@ -39,26 +51,47 @@ const sampled = computed(() => {
   if (n <= MAXPTS) return { times: props.times, series: props.series.map((s) => s.values) }
   const k = n / MAXPTS
   const times: number[] = []
-  const series = props.series.map(() => [] as number[])
+  const series = props.series.map(() => [] as (number | null)[])
   for (let b = 0; b < MAXPTS; b++) {
     const a = Math.floor(b * k)
     const e = Math.max(a + 1, Math.floor((b + 1) * k))
     times.push(props.times[Math.min(n - 1, e - 1)])
     props.series.forEach((s, si) => {
       let sum = 0
-      for (let i = a; i < e; i++) sum += s.values[i] || 0
-      series[si].push(sum / (e - a))
+      let count = 0
+      for (let i = a; i < e; i++) {
+        const value = s.values[i]
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          sum += value
+          count++
+        }
+      }
+      series[si].push(count ? sum / count : null)
     })
   }
   return { times, series }
 })
 
-const top = computed(() => {
-  if (props.max) return props.max
+const rightSeries = computed(() => props.series.find((series) => series.axis === 'right'))
+
+function axisTop(right: boolean) {
   let m = 0
-  for (const s of sampled.value.series) for (const v of s) if (v > m) m = v
-  return m > 0 ? m * 1.15 : 1
-})
+  sampled.value.series.forEach((values, i) => {
+    if ((props.series[i].axis === 'right') !== right) return
+    for (const value of values) {
+      if (typeof value === 'number' && Number.isFinite(value) && value > m) m = value
+    }
+  })
+  const minStep = right ? (rightSeries.value?.minStep ?? 1) : 1
+  const increment = minStep * TICK_INTERVALS
+  return Math.ceil((m > 0 ? m * 1.15 : increment) / increment) * increment
+}
+
+const top = computed(() => props.max || axisTop(false))
+const rightTop = computed(() => axisTop(true))
+const tickFractions = Array.from({ length: TICK_INTERVALS + 1 }, (_, i) => 1 - i / TICK_INTERVALS)
+const leftTicks = computed(() => tickFractions.map((fraction) => props.fmt(top.value * fraction)))
+const rightTicks = computed(() => tickFractions.map((fraction) => (rightSeries.value?.fmt || props.fmt)(rightTop.value * fraction)))
 
 function xAt(i: number) {
   const times = sampled.value.times
@@ -66,27 +99,47 @@ function xAt(i: number) {
   return span > 0 ? ((times[i] - times[0]) / span) * W : W / 2
 }
 
-function yAt(value: number) {
-  return H - 6 - (Math.max(0, value) / top.value) * (H - 14)
+function yAt(value: number, scale = top.value) {
+  return H - 8 - (Math.max(0, value) / scale) * (H - 16)
 }
 
-function pathFor(vals: number[], area: boolean) {
-  const n = vals.length
-  if (!n) return ''
-  let d = `M${xAt(0)},${yAt(vals[0])}`
-  for (let i = 1; i < n; i++) d += ` L${xAt(i)},${yAt(vals[i])}`
-  if (area) d += ` L${xAt(n - 1)},${H} L${xAt(0)},${H} Z`
-  return d
+function pathFor(values: (number | null)[], area: boolean, scale: number) {
+  const segments: { x: number; y: number }[][] = []
+  let points: { x: number; y: number }[] = []
+  values.forEach((value, i) => {
+    if (value === null || !Number.isFinite(value)) {
+      if (points.length) segments.push(points)
+      points = []
+      return
+    }
+    points.push({ x: xAt(i), y: yAt(value, scale) })
+  })
+  if (points.length) segments.push(points)
+  return segments.map((segment) => {
+    const first = segment[0]
+    const last = segment[segment.length - 1]
+    let d = segment.map((point, i) => `${i === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ')
+    if (segment.length === 1) d += ` L${first.x},${first.y}`
+    if (area) d += ` L${last.x},${H} L${first.x},${H} Z`
+    return d
+  }).join(' ')
 }
 
 const paths = computed(() =>
-  sampled.value.series.map((vals, i) => ({
-    line: pathFor(vals, false),
-    area: pathFor(vals, true),
-    color: props.series[i].color,
-    id: `${gradientId}-${i}`,
-  })),
+  sampled.value.series.map((vals, i) => {
+    const scale = props.series[i].axis === 'right' ? rightTop.value : top.value
+    return {
+      line: pathFor(vals, false, scale),
+      area: pathFor(vals, true, scale),
+      color: props.series[i].color,
+      id: `${gradientId}-${i}`,
+    }
+  }),
 )
+
+function formatValue(value: number | null | undefined, series: Series) {
+  return typeof value === 'number' && Number.isFinite(value) ? (series.fmt || props.fmt)(value) : '—'
+}
 
 function onMove(e: PointerEvent) {
   const el = box.value
@@ -105,7 +158,10 @@ function onMove(e: PointerEvent) {
 
 function timeLabel(value: number) {
   const t = new Date(value)
-  return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
+  const times = sampled.value.times
+  const shortRange = times[times.length - 1] - times[0] <= 10 * 60000
+  const label = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
+  return shortRange ? `${label}:${String(t.getSeconds()).padStart(2, '0')}` : label
 }
 
 const timeTicks = computed(() => {
@@ -123,21 +179,21 @@ const tip = computed(() => {
   return {
     left: (xAt(i) / W) * 100,
     time: new Date(sampled.value.times[i]).toLocaleString('zh-CN', { hour12: false }),
-    rows: props.series.map((s, si) => ({ name: s.name, color: s.color, v: props.fmt(sampled.value.series[si][i] ?? 0) })),
+    rows: props.series.map((s, si) => ({ name: s.name, color: s.color, v: formatValue(sampled.value.series[si][i], s) })),
   }
 })
 
 const latest = computed(() =>
   props.series.map((s) => {
     const value = s.values[s.values.length - 1]
-    return { name: s.name, color: s.color, v: Number.isFinite(value) ? props.fmt(value) : '—' }
+    return { name: s.name, color: s.color, v: formatValue(value, s) }
   }),
 )
 
 const emptyMessage = computed(() => {
   if (props.loading) return '正在打捞记录……'
   if (props.error) return '记录加载失败，请重试'
-  return '这个时间段还没有记录哦……'
+  return props.emptyText
 })
 </script>
 
@@ -149,34 +205,40 @@ const emptyMessage = computed(() => {
         <span v-for="l in latest" :key="l.name" class="chip"><i :style="{ background: l.color }" />{{ l.name }} <b>{{ l.v }}</b></span>
       </div>
     </div>
-    <div ref="box" class="plot" @pointermove="onMove" @pointerleave="hoverIdx = null">
-      <svg class="plot-svg" :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" aria-hidden="true">
-        <defs>
-          <linearGradient v-for="p in paths" :id="p.id" :key="p.id" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" :stop-color="p.color" stop-opacity="0.45" />
-            <stop offset="100%" :stop-color="p.color" stop-opacity="0.04" />
-          </linearGradient>
-        </defs>
-        <line v-for="k in 3" :key="k" x1="0" :x2="W" :y1="(H / 4) * k" :y2="(H / 4) * k" class="plot-grid" />
-        <g v-for="(p, i) in paths" :key="p.id">
-          <path :d="p.area" :fill="`url(#${p.id})`" />
-          <path :d="p.line" class="halo" />
-          <path :d="p.line" class="line" :stroke="p.color" />
-          <circle v-if="sampled.times.length === 1" :cx="W / 2" :cy="yAt(sampled.series[i][0])" r="3" :fill="p.color" />
-        </g>
-      </svg>
-      <span v-if="times.length" class="ylab">{{ fmt(top) }}</span>
-      <div v-if="!times.length" class="chart-empty" role="status">{{ emptyMessage }}</div>
-      <template v-if="tip">
-        <div class="cursor" :style="{ left: `${tip.left}%` }" />
-        <div class="tip" :style="{ '--tip-x': `${tip.left}%` }">
-          <div class="tip-t">{{ tip.time }}</div>
-          <div v-for="r in tip.rows" :key="r.name"><i :style="{ background: r.color }" />{{ r.name }} {{ r.v }}</div>
-        </div>
-      </template>
-    </div>
-    <div class="time-axis" :class="{ single: timeTicks.length === 1 }" aria-label="记录时间">
-      <span v-for="(tick, i) in timeTicks" :key="i">{{ tick }}</span>
+    <div class="chart-axes" :class="{ 'has-right': rightSeries }">
+      <div class="y-axis" :aria-label="`${title} Y 轴刻度`">
+        <span v-for="(tick, i) in leftTicks" :key="i">{{ tick }}</span>
+      </div>
+      <div ref="box" class="plot" @pointermove="onMove" @pointerleave="hoverIdx = null">
+        <svg class="plot-svg" :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient v-for="p in paths" :id="p.id" :key="p.id" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" :stop-color="p.color" stop-opacity="0.45" />
+              <stop offset="100%" :stop-color="p.color" stop-opacity="0.04" />
+            </linearGradient>
+          </defs>
+          <line v-for="fraction in tickFractions" :key="fraction" x1="0" :x2="W" :y1="yAt(top * fraction)" :y2="yAt(top * fraction)" class="plot-grid" />
+          <g v-for="p in paths" :key="p.id">
+            <path :d="p.area" :fill="`url(#${p.id})`" />
+            <path :d="p.line" class="halo" />
+            <path :d="p.line" class="line" :stroke="p.color" />
+          </g>
+        </svg>
+        <div v-if="!times.length" class="chart-empty" role="status">{{ emptyMessage }}</div>
+        <template v-if="tip">
+          <div class="cursor" :style="{ left: `${tip.left}%` }" />
+          <div class="tip" :style="{ '--tip-x': `${tip.left}%` }">
+            <div class="tip-t">{{ tip.time }}</div>
+            <div v-for="r in tip.rows" :key="r.name"><i :style="{ background: r.color }" />{{ r.name }} {{ r.v }}</div>
+          </div>
+        </template>
+      </div>
+      <div v-if="rightSeries" class="y-axis right" :style="{ color: rightSeries.color }" :aria-label="`${rightSeries.name} Y 轴刻度`">
+        <span v-for="(tick, i) in rightTicks" :key="i">{{ tick }}</span>
+      </div>
+      <div class="time-axis" :class="{ single: timeTicks.length === 1 }" aria-label="记录时间">
+        <span v-for="(tick, i) in timeTicks" :key="i">{{ tick }}</span>
+      </div>
     </div>
   </section>
 </template>
@@ -192,7 +254,10 @@ const emptyMessage = computed(() => {
 }
 .chart-head {
   display: grid;
-  gap: 6px;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
   margin-bottom: 10px;
   font-size: 13px;
 }
@@ -209,6 +274,7 @@ const emptyMessage = computed(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px 14px;
   min-height: 18px;
 }
@@ -235,7 +301,32 @@ const emptyMessage = computed(() => {
   border-radius: 50%;
   border: 1.5px solid var(--ink);
 }
+.chart-axes {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 8px;
+}
+.chart-axes.has-right {
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+}
+.y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 130px;
+  padding-block: 2px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 12px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.y-axis.right {
+  text-align: left;
+}
 .plot {
+  min-width: 0;
   position: relative;
   height: 130px;
   background: var(--paper-2);
@@ -270,14 +361,6 @@ const emptyMessage = computed(() => {
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
 }
-.ylab {
-  position: absolute;
-  left: 6px;
-  top: 3px;
-  font-size: 10.5px;
-  color: var(--muted);
-  font-family: Fredoka, sans-serif;
-}
 .chart-empty {
   position: absolute;
   inset: 0;
@@ -289,6 +372,7 @@ const emptyMessage = computed(() => {
   text-align: center;
 }
 .time-axis {
+  grid-column: 2;
   display: flex;
   justify-content: space-between;
   min-height: 14px;

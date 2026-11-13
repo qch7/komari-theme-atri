@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getRecords, type LoadRecord, type NodeInfo, type NodeStatus } from '../api'
-import { ago, bytes, osShort, pct, speed, uptime } from '../format'
+import { ago, bytes, osShort, speed, uptime } from '../format'
 import Chart from './Chart.vue'
 import Icon from './Icon.vue'
 import Sprite from './Sprite.vue'
@@ -12,19 +12,45 @@ const props = defineProps<{ node: NodeInfo; status?: NodeStatus; place: string; 
 const emit = defineEmits<{ close: [] }>()
 
 const RANGES = [
+  { h: 0, label: '实时' },
   { h: 1, label: '1 小时' },
   { h: 6, label: '6 小时' },
   { h: 24, label: '24 小时' },
 ]
-const hours = ref(1)
+const hours = ref(0)
 const records = ref<LoadRecord[]>([])
+const liveRecords = ref<LoadRecord[]>([])
+const LIVE_WINDOW = 10 * 60000
+const MAX_LIVE_POINTS = 120
 const loading = ref(false)
 const opened = ref(false) // treasure chest: peek while the first load runs, then cheer
 const err = ref('')
 let timer = 0
+let liveTimer = 0
 let revealTimer = 0
 let requestId = 0
 let previousOverflow = ''
+
+function appendLive(incoming: LoadRecord[]) {
+  const cutoff = Date.now() - LIVE_WINDOW
+  const points = new Map<number, LoadRecord>()
+  for (const record of [...liveRecords.value, ...incoming]) {
+    const time = Date.parse(record.time)
+    if (Number.isFinite(time) && time >= cutoff) points.set(time, record)
+  }
+  liveRecords.value = [...points.values()]
+    .sort((a, b) => Date.parse(a.time) - Date.parse(b.time))
+    .slice(-MAX_LIVE_POINTS)
+}
+
+watch(
+  [() => props.node.uuid, () => props.status],
+  ([uuid, status], previous) => {
+    if (uuid !== previous?.[0]) liveRecords.value = []
+    if (status) appendLive([status])
+  },
+  { immediate: true },
+)
 
 async function load(reset = false) {
   const id = ++requestId
@@ -32,11 +58,13 @@ async function load(reset = false) {
   loading.value = true
   err.value = ''
   try {
-    const result = await getRecords(props.node.uuid, hours.value)
+    const result = await getRecords(props.node.uuid, hours.value || 1)
     if (id !== requestId) return
-    records.value = result
+    const sorted = result
       .filter((r) => Number.isFinite(Date.parse(r.time)))
       .sort((a, b) => Date.parse(a.time) - Date.parse(b.time))
+    if (hours.value === 0) appendLive([...sorted, ...liveRecords.value])
+    else records.value = sorted
   } catch (e) {
     if (id !== requestId) return
     err.value = (e as Error).message
@@ -58,8 +86,12 @@ watch(
 onMounted(() => {
   load()
   timer = window.setInterval(() => {
-    if (!loading.value) load()
+    if (hours.value > 0 && !loading.value) load()
   }, 60000)
+  liveTimer = window.setInterval(() => {
+    const first = liveRecords.value[0]
+    if (first && Date.parse(first.time) < Date.now() - LIVE_WINDOW) appendLive([])
+  }, 1000)
   document.addEventListener('keydown', onKey)
   previousOverflow = document.body.style.overflow
   document.body.style.overflow = 'hidden'
@@ -67,6 +99,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   requestId++
   clearInterval(timer)
+  clearInterval(liveTimer)
   clearTimeout(revealTimer)
   document.removeEventListener('keydown', onKey)
   document.body.style.overflow = previousOverflow
@@ -75,33 +108,46 @@ function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') emit('close')
 }
 
-const times = computed(() => records.value.map((r) => Date.parse(r.time)))
+const activeRecords = computed(() => hours.value === 0 ? liveRecords.value : records.value)
+const times = computed(() => activeRecords.value.map((r) => Date.parse(r.time)))
 const lastRecordTime = computed(() => {
   const time = times.value[times.value.length - 1]
   return time === undefined ? '' : new Date(time).toLocaleTimeString('zh-CN', { hour12: false })
 })
 const memTotal = computed(() => props.node.mem_total || props.status?.ram_total || 0)
 const diskTotal = computed(() => props.node.disk_total || props.status?.disk_total || 0)
+const swapTotal = computed(() => props.node.swap_total || props.status?.swap_total || 0)
 
 const charts = computed(() => {
-  const r = records.value
+  const r = activeRecords.value
   return [
     {
       title: 'CPU',
       icon: 'chip',
       max: 100,
       fmt: (v: number) => `${v.toFixed(1)}%`,
-      series: [{ name: 'CPU', color: '#4cc3ff', values: r.map((x) => x.cpu) }],
+      series: [
+        { name: 'CPU', color: '#4cc3ff', values: r.map((x) => x.cpu) },
+        {
+          name: '负载', color: '#9b7bff', axis: 'right' as const, minStep: 0.01,
+          fmt: (v: number) => v.toFixed(2), values: r.map((x) => x.load),
+        },
+      ],
     },
     {
-      title: '内存 / 硬盘',
+      title: '内存',
       icon: 'ram',
-      max: 100,
-      fmt: (v: number) => `${v.toFixed(1)}%`,
+      fmt: (v: number) => bytes(v),
       series: [
-        { name: '内存', color: '#ff7aa8', values: r.map((x) => pct(x.ram, memTotal.value)) },
-        { name: '硬盘', color: '#ffc94a', values: r.map((x) => pct(x.disk, diskTotal.value)) },
+        { name: '内存', color: '#ff7aa8', values: r.map((x) => x.ram) },
+        ...(swapTotal.value > 0 ? [{ name: 'Swap', color: '#ffc94a', values: r.map((x) => x.swap ?? null) }] : []),
       ],
+    },
+    {
+      title: '硬盘',
+      icon: 'disk',
+      fmt: (v: number) => bytes(v),
+      series: [{ name: '硬盘', color: '#3fd08f', values: r.map((x) => x.disk) }],
     },
     {
       title: '网络',
@@ -111,12 +157,6 @@ const charts = computed(() => {
         { name: '上行', color: '#ff8a5c', values: r.map((x) => x.net_out) },
         { name: '下行', color: '#3fd08f', values: r.map((x) => x.net_in) },
       ],
-    },
-    {
-      title: '负载',
-      icon: 'gauge',
-      fmt: (v: number) => v.toFixed(2),
-      series: [{ name: 'Load', color: '#9b7bff', values: r.map((x) => x.load) }],
     },
     {
       title: '连接数',
@@ -218,7 +258,7 @@ const info = computed(() => {
             </div>
             <span class="hint" role="status">
               <template v-if="loading">打捞中……</template>
-              <template v-else-if="!err && lastRecordTime">最近记录 {{ lastRecordTime }}</template>
+              <template v-else-if="!err && lastRecordTime">{{ hours === 0 ? '实时上报' : '最近记录' }} {{ lastRecordTime }}</template>
             </span>
           </div>
           <div v-if="err" class="record-error" role="alert">
@@ -237,6 +277,7 @@ const info = computed(() => {
               :fmt="c.fmt"
               :loading="loading"
               :error="err"
+              :empty-text="hours === 0 ? '等待探针实时上报……' : undefined"
             />
           </div>
         </div>

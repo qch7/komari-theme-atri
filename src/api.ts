@@ -53,6 +53,7 @@ export interface LoadRecord {
   time: string
   cpu: number
   ram: number
+  swap?: number
   disk: number
   load: number
   net_in: number
