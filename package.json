@@ -1,0 +1,35 @@
+{
+  "name": "komari-theme-atri",
+  "private": true,
+  "version": "1.0.0",
+  "license": "MIT",
+  "author": "huaiyu",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qch7/komari-theme-atri.git"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5179 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 5180",
+    "preview:dist": "node scripts/serve-dist.mjs . 5181",
+    "pack": "python -I scripts/pack.py"
+  },
+  "dependencies": {
+    "@fontsource/fredoka": "^5.3.0",
+    "country-flag-emoji-polyfill": "^0.1.10",
+    "d3-geo": "^3.1.2",
+    "topojson-client": "^3.1.0",
+    "vue": "^3.5.45",
+    "world-atlas": "^2.0.2"
+  },
+  "devDependencies": {
+    "@types/d3-geo": "^3.1.1",
+    "@types/topojson-client": "^3.1.5",
+    "@types/topojson-specification": "^1.0.5",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.7"
+  }
+}

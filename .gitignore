@@ -1,0 +1,14 @@
+node_modules/
+dist/
+output/
+.playwright-cli/
+*.zip
+*.log
+__pycache__/
+
+.env
+.env.*
+!.env.example
+
+.DS_Store
+Thumbs.db

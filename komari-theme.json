@@ -1,0 +1,31 @@
+{
+  "name": { "zh-CN": "亚托莉 · 我挚爱的服务器", "en": "ATRI -My Dear Servers-" },
+  "short": "ATRI",
+  "description": {
+    "zh-CN": "高性能的亚托莉为你看守服务器！卡通风旋转地球、视觉小说对话框、游泳的亚托莉和伟大的螃蟹。",
+    "en": "A cartoon Komari theme starring ATRI: spinning globe with server pins, visual-novel dialogue and a great crab."
+  },
+  "version": "1.0.0",
+  "author": "huaiyu",
+  "url": "https://github.com/qch7/komari-theme-atri",
+  "preview": "preview.png",
+  "configuration": {
+    "type": "managed",
+    "icon": "/themes/ATRI/dist/atri-icon.webp",
+    "name": { "zh-CN": "亚托莉设定", "en": "ATRI Settings" },
+    "data": [
+      { "name": { "zh-CN": "亚托莉", "en": "ATRI" }, "type": "title" },
+      { "key": "greeting", "name": "固定台词", "type": "string", "default": "", "help": "留空则由亚托莉根据服务器状态随机说话；填写后会插入到台词轮播里" },
+      { "key": "master_name", "name": "对主人的称呼", "type": "string", "default": "夏生先生", "help": "台词里的「夏生先生」会替换成这里的称呼" },
+      { "key": "voice_enabled", "name": "点击语音", "type": "switch", "default": true, "help": "点亚托莉或螃蟹时播放游戏语音（访客也可在页面右上角静音）" },
+      { "key": "show_swimmer", "name": "海里游泳的亚托莉", "type": "switch", "default": true, "help": "在海面上游来游去" },
+      { "name": { "zh-CN": "地球", "en": "Globe" }, "type": "title" },
+      { "key": "globe_speed", "name": "自转速度（度/秒）", "type": "number", "default": 6, "help": "0 表示不自动旋转，仍可拖动" },
+      { "key": "show_routes", "name": "节点间航线", "type": "switch", "default": true, "help": "在不同城市的节点之间画动态航线" },
+      { "key": "node_locations", "name": "节点坐标覆盖", "type": "richtext", "default": "", "help": "默认按节点名里的城市（大阪、上海、Tokyo…）或地区旗帜定位。需要精确位置时填 JSON，键为节点名或 UUID，例如 {\"甲骨文大阪 a1\": [34.69, 135.50], \"我的节点\": {\"lat\": 22.3, \"lon\": 114.2, \"label\": \"香港\"}}" },
+      { "name": { "zh-CN": "列表", "en": "List" }, "type": "title" },
+      { "key": "refresh_interval", "name": "刷新间隔（秒）", "type": "number", "default": 3, "help": "实时数据轮询间隔，最小 2 秒" },
+      { "key": "offline_last", "name": "离线节点排在最后", "type": "switch", "default": true, "help": "" }
+    ]
+  }
+}
