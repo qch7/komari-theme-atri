@@ -185,7 +185,11 @@ const tip = computed(() => {
 
 const latest = computed(() =>
   props.series.map((s) => {
-    const value = s.values[s.values.length - 1]
+    let value: number | null = null
+    for (let i = s.values.length - 1; i >= 0 && value === null; i--) {
+      const v = s.values[i]
+      if (typeof v === 'number' && Number.isFinite(v)) value = v
+    }
     return { name: s.name, color: s.color, v: formatValue(value, s) }
   }),
 )
@@ -245,6 +249,8 @@ const emptyMessage = computed(() => {
 
 <style scoped>
 .chart {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   padding: 12px 14px 10px;
   background: var(--paper);
@@ -302,8 +308,10 @@ const emptyMessage = computed(() => {
   border: 1.5px solid var(--ink);
 }
 .chart-axes {
+  flex: 1;
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-rows: minmax(130px, 1fr) auto;
   column-gap: 8px;
 }
 .chart-axes.has-right {
@@ -313,7 +321,7 @@ const emptyMessage = computed(() => {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  height: 130px;
+  min-height: 130px;
   padding-block: 2px;
   color: var(--muted);
   font-size: 10.5px;
@@ -328,7 +336,7 @@ const emptyMessage = computed(() => {
 .plot {
   min-width: 0;
   position: relative;
-  height: 130px;
+  min-height: 130px;
   background: var(--paper-2);
   border: 2px solid var(--line);
   border-radius: 12px;
@@ -336,6 +344,8 @@ const emptyMessage = computed(() => {
   touch-action: pan-y;
 }
 .plot-svg {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;

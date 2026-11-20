@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getLatest, getNodes, getPublic, type NodeInfo, type NodeStatus, type PublicInfo } from './api'
+import { getLatest, getNodes, getPingOverview, getPublic, type NodeInfo, type NodeStatus, type PublicInfo } from './api'
 import { bytes, flagToCode, pct, speed } from './format'
+import { summarizeByNode, type NodePing } from './ping'
 import { locate, parseOverrides, type GeoLoc } from './geo'
 import { LINES, fill, pick } from './lines'
 import { playVoice, VOICES } from './sound'
@@ -109,6 +110,19 @@ async function refreshNodes() {
   }
 }
 
+// latency for the node cards; probes run every 30–60 s, so a slow poll is plenty
+const pings = ref<Record<string, NodePing[]>>({})
+let pingTimer = 0
+async function refreshPing() {
+  if (document.hidden && Object.keys(pings.value).length) return
+  try {
+    const r = await getPingOverview(nodes.value.map((n) => n.uuid))
+    pings.value = summarizeByNode(r.stats, r.tasks)
+  } catch {
+    /* latency is optional; keep what we had */
+  }
+}
+
 let bootTimer = 0
 async function boot() {
   try {
@@ -125,6 +139,8 @@ async function boot() {
   loaded.value = true
   scheduleStatus()
   nodesTimer = window.setInterval(refreshNodes, 60000)
+  refreshPing()
+  pingTimer = window.setInterval(refreshPing, 60000)
 }
 
 const onVis = () => {
@@ -145,6 +161,7 @@ onBeforeUnmount(() => {
   clearTimeout(statusTimer)
   clearTimeout(bootTimer)
   clearInterval(nodesTimer)
+  clearInterval(pingTimer)
 })
 
 // ---------- derived ----------
@@ -425,6 +442,7 @@ const isPrivate = computed(() => /private/i.test(error.value))
           :node="n"
           :status="status[n.uuid]"
           :place="locs[n.uuid]?.label || ''"
+          :ping="pings[n.uuid]"
           @open="open(n.uuid)"
         />
       </div>
