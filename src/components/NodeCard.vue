@@ -2,11 +2,20 @@
 import { computed } from 'vue'
 import type { NodeInfo, NodeStatus } from '../api'
 import { ago, bytes, osShort, pct, speed, uptime } from '../format'
+import { latencyLevel, lossText, type NodePing } from '../ping'
 import punch from '../assets/atri/atri_punch.webp'
 import Icon from './Icon.vue'
 import Sprite from './Sprite.vue'
 
-const props = defineProps<{ node: NodeInfo; status?: NodeStatus; place: string }>()
+const props = defineProps<{ node: NodeInfo; status?: NodeStatus; place: string; ping?: NodePing[] }>()
+
+const pings = computed(() =>
+  (props.ping || []).slice(0, 3).map((p) => ({
+    ...p,
+    level: p.latest === null ? 'bad' : latencyLevel(p.latest),
+    text: p.latest === null ? '超时' : `${Math.round(p.latest)}`,
+  })),
+)
 const emit = defineEmits<{ open: [] }>()
 
 const online = computed(() => !!props.status?.online)
@@ -107,7 +116,20 @@ const bars = computed(() => {
     <div class="net">
       <span class="up"><Icon name="up" size="16px" />{{ speed(status?.net_out) }}</span>
       <span class="down"><Icon name="down" size="16px" />{{ speed(status?.net_in) }}</span>
+      <img v-if="online && cpu >= 90" :src="punch" alt="" class="turbo-atri" />
     </div>
+    <ul v-if="online && pings.length" class="ping" aria-label="延迟（最近一次探测）">
+      <li
+        v-for="p in pings"
+        :key="p.name"
+        :title="`${p.name} · 最近一小时平均 ${p.avg === null ? '—' : Math.round(p.avg) + ' ms'} · 丢包 ${lossText(p.loss)}`"
+      >
+        <i class="ping-dot" :class="p.level" />
+        <span class="ping-name">{{ p.name }}</span>
+        <span class="ping-val"><b>{{ p.text }}</b><small v-if="p.latest !== null"> ms</small></span>
+        <em class="ping-loss" :class="{ none: p.loss <= 0 }">丢包 {{ lossText(p.loss) }}</em>
+      </li>
+    </ul>
     <div class="foot">
       <span title="累计流量（上传 / 下载）"><Icon name="wave" size="15px" />{{ bytes(status?.net_total_up) }} / {{ bytes(status?.net_total_down) }}</span>
       <span title="负载"><Icon name="gauge" size="15px" />{{ (status?.load ?? 0).toFixed(2) }}</span>
@@ -118,7 +140,6 @@ const bars = computed(() => {
     </div>
 
     <div v-if="online && cpu >= 90" class="turbo-tag">高性能模式！</div>
-    <img v-if="online && cpu >= 90" :src="punch" alt="" class="turbo-atri" />
     <div v-if="!online" class="sunk">
       <Sprite name="sink" :height="78" :speed="0.9" class="sunk-atri" />
       <div>
@@ -289,6 +310,7 @@ const bars = computed(() => {
   background-color: var(--bad);
 }
 .net {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
@@ -315,6 +337,71 @@ const bars = computed(() => {
   background: var(--down-bg);
   color: var(--down);
 }
+.ping {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 1px 8px;
+  margin: 0;
+  padding: 4px 10px;
+  list-style: none;
+  font-size: 12px;
+  background: var(--paper-2);
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  font-family: Fredoka, 'Microsoft YaHei UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.ping li {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  line-height: 18px;
+}
+.ping-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink);
+}
+.ping-dot.ok {
+  background: var(--ok);
+}
+.ping-dot.warn {
+  background: var(--warn);
+}
+.ping-dot.bad {
+  background: var(--bad);
+}
+.ping-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+.ping-val {
+  text-align: right;
+  white-space: nowrap;
+}
+.ping-val b {
+  font-weight: 600;
+}
+.ping-val small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.ping-loss {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--bad);
+  white-space: nowrap;
+}
+.ping-loss.none {
+  color: var(--muted);
+  opacity: 0.6;
+}
 .foot {
   display: flex;
   flex-wrap: wrap;
@@ -333,8 +420,8 @@ const bars = computed(() => {
 }
 .turbo-atri {
   position: absolute;
-  right: 6px;
-  bottom: 52px;
+  right: -10px;
+  bottom: 10px;
   width: 64px;
   filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.2));
   animation: jab 0.45s ease-in-out infinite;

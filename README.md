@@ -9,7 +9,11 @@ ATRI -My Dear Moments- 风格的 Komari 1.6 探针主题。只用官方小游戏
 - **Log.02 打捞作业**：水手领卡片，条纹进度条，离线节点「沉入海底中」。节点详情支持实时和 1/6/24 小时记录，展示 CPU 与负载、内存与 Swap、独立磁盘、网络、连接数和进程数六张曲线。
 - 白昼之海 / 沉没的星星（深色）两套配色，跟随 `localStorage.appearance`；手机适配
 
+- **声呐 · 延迟监测**：读取 Komari 后台「延迟监测」的任务。卡片显示每个任务最近一次延迟和一小时丢包率；节点详情有平均/最低–最高/丢包、丢包时间线和多线路延迟曲线，跟随实时和 1/6/24 小时切换。没有任务的节点显示提示。
+
 实时模式跟随探针上报更新，展示最近 10 分钟、最多 120 条记录。
+
+延迟数据需要先在后台「延迟监测」里添加任务并勾选节点（只有勾选的节点会探测）。ICMP 任务要求 Agent 能发原始套接字：以 root 运行没问题；以普通用户运行时需要 `CAP_NET_RAW`（例如 systemd 里加 `AmbientCapabilities=CAP_NET_RAW`），否则会全部记为丢包。TCP / HTTP 任务没有这个要求。
 
 ## 安装
 
@@ -34,6 +38,8 @@ npm run build          # base 固定为 /themes/ATRI/dist/
 npm run pack           # 打包成可安装 zip
 npm run preview:dist   # http://localhost:5181，按 Komari 的托管规则预览 dist
 ```
+
+开发时在地址后加 `?ping-demo`（如 `http://localhost:5179/?ping-demo`）会用模拟数据展示延迟监测，方便没有延迟任务时调界面。只在开发模式生效，不会打进安装包。
 
 重新处理角色图片时，安装 Pillow 后运行 `python -I scripts/prep_assets.py <atri_game 目录> src/assets/atri`。
 

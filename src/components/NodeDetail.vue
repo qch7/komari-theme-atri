@@ -4,6 +4,7 @@ import { getRecords, type LoadRecord, type NodeInfo, type NodeStatus } from '../
 import { ago, bytes, osShort, speed, uptime } from '../format'
 import Chart from './Chart.vue'
 import Icon from './Icon.vue'
+import PingPanel from './PingPanel.vue'
 import Sprite from './Sprite.vue'
 import peek from '../assets/atri/treasure_peek.webp'
 import cheer from '../assets/atri/treasure_cheer.webp'
@@ -266,6 +267,7 @@ const info = computed(() => {
             <button type="button" @click="load()">重试</button>
           </div>
           <div class="charts">
+            <PingPanel :uuid="node.uuid" :hours="hours" />
             <Chart
               v-for="c in charts"
               :key="c.title"

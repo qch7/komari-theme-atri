@@ -87,6 +87,11 @@ export const ICONS: Record<string, string> = {
     <path d="M16 9.8V27.5M10.5 14h11" fill="none" stroke-width="2.8"/>
     <path d="M5 18.5c.4 6 5.2 9 11 9s10.6-3 11-9" fill="none" stroke-width="2.8"/>
     <path d="M2.8 20.3l2.2-3.8 2.8 3.4M29.2 20.3L27 16.5l-2.8 3.4" fill="none" stroke-width="2.4"/>`,
+  sonar: `<circle cx="16" cy="16" r="12.8" fill="#bfe3ff"/>
+    <circle cx="16" cy="16" r="7.6" fill="none" stroke-width="1.5" stroke-dasharray="2.2 2.6"/>
+    <path d="M16 16L26.85 9.22A12.8 12.8 0 0 1 28.8 16Z" fill="#3fd08f" stroke-width="1.6"/>
+    <circle cx="20.6" cy="21.4" r="1.9" fill="#ff7aa8" stroke-width="1.4"/>
+    <circle cx="16" cy="16" r="2.2" fill="var(--ribbon)" stroke-width="1.6"/>`,
   heart: `<path d="M16 27.5C9.5 22.6 3.5 18 3.5 11.4 3.5 7.6 6.4 5 9.7 5c2.6 0 4.8 1.4 6.3 3.6C17.5 6.4 19.7 5 22.3 5c3.3 0 6.2 2.6 6.2 6.4 0 6.6-6 11.2-12.5 16.1z" fill="#ff7aa8"/>
     <path d="M8.5 9.6c.6-1.2 1.6-1.9 2.8-2" fill="none" stroke="#fff" stroke-width="1.8"/>`,
 }
